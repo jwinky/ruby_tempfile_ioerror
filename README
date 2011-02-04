@@ -1,0 +1,45 @@
+-----------
+THE PROBLEM
+-----------
+
+While developing a web app with Ruby 1.8.7-p299, Rails 2.3.5 and Paperclip, IOErrors began occuring intermittently
+after files were uploaded and/or destroyed.
+
+The problem was first noted only in development and test.  In the production environment, they never occurred.
+Eventually, IOErrors began appearing in production as well.
+
+We found the problem very difficult to diagnose because the exception stacktrace was never consistent.  The IOError
+would be raised by pieces of code completely unrelated to file uploads, and/or by rescue statements.
+
+---------
+THE CAUSE
+---------
+
+Some research revealed that many people have experienced this problem (using other frameworks as well,
+not just Rails).  The root cause appears to be a race condition between the Ruby garbage collector
+and the Tempfile class finalizer.
+
+This explains the intermittent nature and odd stacktraces.  The IOError only occurs when the ruby garbage
+collector runs and a Tempfile object has already been closed.
+
+The scripts in the cause/ folder reproduce the error in several different scenarios.  Using ree-1.8.7
+prevents the IOError in the most common case, but not all.
+
+-------
+THE FIX
+-------
+
+The error is reliably reproducible using both ruby-1.8.7-p299, ruby-1.8.7-p324, and ree-1.8.7 and likely
+affects other versions as well.
+
+The original line of code is:
+    tempfile.rb:167: tmpfile.close if tmpfile 
+
+Intermittent IOErrors can be prevented by updating this line to
+    tempfile.rb:167: tmpfile.close if tmpfile && !tmpfile.closed?
+
+Adjust the exact line number as necessary if using a different version of Ruby.
+
+The tempfile_monkeypatch.rb file is a Rails initializer we added to our application which has successfully
+corrected the problem.  No side-effects have been noted (yet).
+
